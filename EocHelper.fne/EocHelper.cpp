@@ -216,4 +216,66 @@ PLIB_INFO WINAPI GetNewInf()
 };
 #endif
 
+BOOL g_EOCBuild = false;
+int WINAPI E_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	int ret = CallWindowProc(g_EWndProc, hwnd, uMsg, wParam, lParam);
+	switch (uMsg)
+	{
+	case WM_INITMENUPOPUP:
+	{
+		HMENU hMenu = (HMENU)wParam;
+		int nCount = GetMenuItemCount(hMenu);
+		int uId, uState;
+		int i;
 
+		for (i = 0; nCount > i; i++)
+		{
+			uId = GetMenuItemID(hMenu, i);
+			if (uId == IDM_±àÒë)
+			{
+				i++;
+				uId = GetMenuItemID(hMenu, i);
+				if (uId != IDM_EOCBuild)
+				{
+					InsertMenu(hMenu, i, MF_BYPOSITION, IDM_EOCBuild, "&EOC±àÒë");
+				}
+				//¸úËæ²Ëµ¥×´Ì¬
+				uState = GetMenuState(hMenu, IDM_±àÒë, MF_BYCOMMAND);
+				EnableMenuItem(hMenu, IDM_EOCBuild, MF_BYCOMMAND | uState);
+				g_EOCBuild = false;
+				break;
+			}
+		}
+		break;
+	}
+	case WM_COMMAND:
+	{
+		int MenuID = wParam;
+		if (MenuID == IDM_EOCBuild)
+		{
+			g_EOCBuild = true;
+			SendMessage(hwnd, WM_COMMAND, IDM_±àÒëÎªÖ¸¶¨ÀàÐÍ_WindowsÒ×ÓïÑÔÄ£¿é, 0);
+			g_EOCBuild = false;
+		}
+		break;
+	}
+	}
+	return ret;
+}
+
+
+BOOL WINAPI My_GetSaveFileNameA(LPOPENFILENAMEA Arg1)
+{
+	BOOL ret = Hook_GetSaveFileNameA(Arg1);
+	if (ret && g_EOCBuild)
+	{
+		if (Arg1->lpstrFile)
+		{
+			MessageBox(g_EhWnd, Arg1->lpstrFile, "±£´æµ½", MB_OK);
+		}
+
+	}
+
+	return ret;
+}
