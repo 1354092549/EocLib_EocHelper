@@ -89,6 +89,10 @@ INT WINAPI ProcessNotifyLib (INT nMsg, DWORD dwParam1, DWORD dwParam2)
 	switch (nMsg)
 	{
 	case NL_SYS_NOTIFY_FUNCTION:
+		if (g_fnNotifySys)
+		{
+			break;
+		}
 		g_fnNotifySys = (PFN_NOTIFY_SYS)dwParam1;
 
 		g_EhWnd = (HWND)NotifySys(NES_GET_MAIN_HWND, NULL, NULL);
