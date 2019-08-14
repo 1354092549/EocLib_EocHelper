@@ -5,6 +5,7 @@
 #include "StdAfx.h"
 #include "fnshare.h"
 #include <assert.h>
+#include "IATHook.h"
 
 INT g_nLastNotifyResult;
 PFN_NOTIFY_SYS g_fnNotifySys = NULL;
@@ -24,6 +25,64 @@ g_fn_OnSysNotify = (PFN_ON_SYS_NOTIFY) My_OnSysNotify;
 */
 //end add
 
+
+typedef BOOL(WINAPI* PFN_GetSaveFileNameA) (LPOPENFILENAMEA Arg1);
+HWND g_EhWnd = 0; //易语言IDE窗口句柄
+int g_ver = 0; //易语言IDE版本
+char g_EPath[MAX_PATH] = { 0 };
+WNDPROC g_EWndProc = 0;
+HWND g_EOutputhWnd = 0;
+PFN_GetSaveFileNameA Hook_GetSaveFileNameA = NULL;
+
+void GetEOutputWnd()
+{
+	HWND TempWnd;
+	HWND StatusWnd = 0;
+	HWND TabWnd = 0;
+	if (!g_EhWnd)
+	{
+		return;
+	}
+	//易语言的状态夹可以固定的和脱离的
+	do //先查找固定的状态夹
+	{
+		TempWnd = FindWindowEx(g_EhWnd, TempWnd, "AfxControlBar42s", 0); //窗口标题是“状态夹”，但有英文版
+		if (TempWnd == 0) //状态夹的子窗口不存在说明状态夹窗口分离了，易语言会创建一个顶级窗口，然后把子窗口分离过去
+		{
+			//先查找所有顶级窗口
+			do
+			{
+				TempWnd = FindWindowEx(0, TempWnd, "Afx:400000:8:10003:0:0", 0); //窗口标题是“状态夹”，如果隐藏则是NULL
+				if (TempWnd == 0)
+				{
+					return; //没有找到
+				}
+				if (GetParent(TempWnd) == g_EhWnd) //父窗口必须是易语言的IDE窗口
+				{
+					StatusWnd = GetDlgItem(TempWnd, 59423);
+					if (StatusWnd)
+					{
+						StatusWnd = GetDlgItem(StatusWnd, 130); //这就是要找的子窗口
+					}
+				}
+			} while (StatusWnd == 0);
+		}
+		else
+		{
+			StatusWnd = GetDlgItem(TempWnd, 130); //在状态夹里面只有一个子窗口
+		}
+
+	} while (StatusWnd == 0); //如果这个子窗口不存在，这就继续循环到找到为止
+	TabWnd = GetDlgItem(GetDlgItem(StatusWnd, 0), 1000);
+	g_EOutputhWnd = GetDlgItem(TabWnd, 1011);
+}
+
+BOOL EOutput(LPCSTR txt)
+{
+	SendMessage(g_EOutputhWnd, EM_SETSEL, -2, -1);  //移动光标到末尾
+	return SendMessage(g_EOutputhWnd, EM_REPLACESEL, 0, (int)txt) != 0;
+}
+
 INT WINAPI ProcessNotifyLib (INT nMsg, DWORD dwParam1, DWORD dwParam2)
 {
 	INT nRet = NR_OK;
@@ -31,9 +90,23 @@ INT WINAPI ProcessNotifyLib (INT nMsg, DWORD dwParam1, DWORD dwParam2)
 	{
 	case NL_SYS_NOTIFY_FUNCTION:
 		g_fnNotifySys = (PFN_NOTIFY_SYS)dwParam1;
+
+		g_EhWnd = (HWND)NotifySys(NES_GET_MAIN_HWND, NULL, NULL);
+		g_ver = NotifySys(NAS_GET_VER, NULL, NULL);
+		NotifySys(NAS_GET_PATH, 1, (int)&g_EPath);
+		GetEOutputWnd();
+		Hook_GetSaveFileNameA = (PFN_GetSaveFileNameA)IATHook(GetModuleHandle(NULL), "comdlg32.dll", "GetSaveFileNameA", (PROC)My_GetSaveFileNameA);
+
+		g_EWndProc = (WNDPROC)SetWindowLong(g_EhWnd, GWL_WNDPROC, (int)&E_WndProc);
+		EOutput("\r\n★★ EOC插件开启 ★★\r\n");
 		break;
 	case NL_FREE_LIB_DATA:
 		break;
+	case NL_UNLOAD_FROM_IDE:
+		SetWindowLong(g_EhWnd, GWL_WNDPROC, (int)g_EWndProc);
+		IATHook(GetModuleHandle(NULL), "comdlg32.dll", "GetSaveFileNameA", (PROC)Hook_GetSaveFileNameA);
+		EOutput("\r\n☆☆ EOC插件关闭 ☆☆\r\n");
+		return NR_DELAY_FREE;
 	default:
 		nRet = NR_ERR;
 		break;
@@ -45,6 +118,7 @@ INT WINAPI ProcessNotifyLib (INT nMsg, DWORD dwParam1, DWORD dwParam2)
 
 	return nRet;
 }
+
 
 INT WINAPI NotifySys (INT nMsg, DWORD dwParam1, DWORD dwParam2)
 {
