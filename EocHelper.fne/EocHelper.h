@@ -50,3 +50,4 @@ WNDPROC g_EWndProc = 0;
 HWND g_EOutputhWnd = 0;
 PFN_GetSaveFileNameA Hook_GetSaveFileNameA = NULL;
 BOOL g_EOCBuild = false;
+char g_EOCBuildPath[MAX_PATH] = { 0 };

@@ -10,6 +10,8 @@
 #include "elib/fnshare.cpp"
 #include <stdlib.h>
 
+
+
 //------------------------库常量、命令、数据类型定义区-----------------------------
 
 
@@ -236,6 +238,8 @@ int WINAPI E_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			g_EOCBuild = true;
 			SendMessage(hwnd, WM_COMMAND, IDM_编译为指定类型_Windows易语言模块, 0);
 			g_EOCBuild = false;
+
+			MessageBox(g_EhWnd, g_EOCBuildPath, "保存到", MB_OK);
 		}
 		break;
 	}
@@ -247,11 +251,12 @@ int WINAPI E_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 BOOL WINAPI My_GetSaveFileNameA(LPOPENFILENAMEA Arg1)
 {
 	BOOL ret = Hook_GetSaveFileNameA(Arg1);
+
 	if (ret && g_EOCBuild)
 	{
 		if (Arg1->lpstrFile)
 		{
-			MessageBox(g_EhWnd, Arg1->lpstrFile, "保存到", MB_OK);
+			strcpy(g_EOCBuildPath, Arg1->lpstrFile);
 		}
 
 	}
@@ -297,6 +302,7 @@ EXTERN_C INT WINAPI EocHelper_ProcessNotifyLib(INT nMsg, DWORD dwParam1, DWORD d
 		SetWindowLong(g_EhWnd, GWL_WNDPROC, (int)g_EWndProc);
 		IATHook(GetModuleHandle(NULL), "comdlg32.dll", "GetSaveFileNameA", (PROC)Hook_GetSaveFileNameA);
 		EOutput("\r\n☆☆ EOC插件关闭 ☆☆\r\n");
+
 		return NR_DELAY_FREE;
 	}
 
