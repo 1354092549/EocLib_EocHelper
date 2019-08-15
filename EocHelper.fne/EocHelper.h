@@ -37,3 +37,16 @@
 #define IDM_编译为指定类型_Windows易语言模块 32988
 
 #define IDM_EOCBuild 5000 //可自定义，不要和已有的冲突。
+
+int WINAPI E_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
+BOOL WINAPI My_GetSaveFileNameA(LPOPENFILENAMEA Arg1);
+
+typedef BOOL(WINAPI* PFN_GetSaveFileNameA) (LPOPENFILENAMEA Arg1);
+
+HWND g_EhWnd = 0; //易语言IDE窗口句柄
+int g_ver = 0; //易语言IDE版本
+char g_EPath[MAX_PATH] = { 0 };
+WNDPROC g_EWndProc = 0;
+HWND g_EOutputhWnd = 0;
+PFN_GetSaveFileNameA Hook_GetSaveFileNameA = NULL;
+BOOL g_EOCBuild = false;

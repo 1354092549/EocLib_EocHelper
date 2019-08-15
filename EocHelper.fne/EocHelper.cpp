@@ -3,6 +3,7 @@
 
 #include "stdafx.h"
 #include "EocHelper.h"
+#include "IATHook.h"
 #include "elib/lib2.h"
 #include "elib/lang.h"
 #include "elib/fnshare.h"
@@ -143,80 +144,58 @@ static CMD_INFO Commands[] =
 };
 #endif
 
-
-
-
 //--------------------------------------------------------------------
-
-EXTERN_C INT WINAPI EocHelper_ProcessNotifyLib(INT nMsg, DWORD dwParam1, DWORD dwParam2)
-{
 #ifndef __E_STATIC_LIB
-	if (nMsg == NL_GET_CMD_FUNC_NAMES) // 返回所有命令实现函数的的函数名称数组(char*[]), 支持静态编译的动态库必须处理
-		return (INT)CommandNames;
-	else if (nMsg == NL_GET_NOTIFY_LIB_FUNC_NAME) // 返回处理系统通知的函数名称(PFN_NOTIFY_LIB函数名称), 支持静态编译的动态库必须处理
-		return (INT)"EocHelper_ProcessNotifyLib";
-	else if (nMsg == NL_GET_DEPENDENT_LIBS) return (INT)NULL;
-	// 返回静态库所依赖的其它静态库文件名列表(格式为\0分隔的文本,结尾两个\0), 支持静态编译的动态库必须处理
-	// kernel32.lib user32.lib gdi32.lib 等常用的系统库不需要放在此列表中
-	// 返回NULL或NR_ERR表示不指定依赖文件  
-#endif
-	return ProcessNotifyLib(nMsg, dwParam1, dwParam2);
-};
-
-
-#ifndef __E_STATIC_LIB
-static LIB_INFO LibInfo =
+void GetEOutputWnd()
 {
-	/* { 库格式号, GUID串号, 主版本号, 次版本号, 构建版本号, 系统主版本号, 系统次版本号, 核心库主版本号, 核心库次版本号,
-	支持库名, 支持库语言, 支持库描述, 支持库状态,
-	作者姓名, 邮政编码, 通信地址, 电话号码, 传真号码, 电子邮箱, 主页地址, 其它信息,
-	类型数量, 类型指针, 类别数量, 命令类别, 命令总数, 命令指针, 命令入口,
-	附加功能, 功能描述, 消息指针, 超级模板, 模板描述,
-	常量数量, 常量指针, 外部文件} */
-	LIB_FORMAT_VER,
-	_T(LIB_GUID_STR),
-	LIB_MajorVersion,
-	LIB_MinorVersion,
-	LIB_BuildNumber,
-	LIB_SysMajorVer,
-	LIB_SysMinorVer,
-	LIB_KrnlLibMajorVer,
-	LIB_KrnlLibMinorVer,
-	_T(LIB_NAME_STR),
-	__GBK_LANG_VER,
-	_WT(LIB_DESCRIPTION_STR),
-	_LIB_OS(__OS_WIN),
-	_WT(LIB_Author),
-	_WT(LIB_ZipCode),
-	_WT(LIB_Address),
-	_WT(LIB_Phone),
-	_WT(LIB_Fax),
-	_WT(LIB_Email),
-	_WT(LIB_HomePage),
-	_WT(LIB_Other),
-	sizeof(s_DataType) / sizeof(s_DataType[0]),
-	s_DataType,
-	LIB_TYPE_COUNT,
-	_WT(LIB_TYPE_STR),
-	sizeof(Commands) / sizeof(Commands[0]),
-	Commands,
-	ExecuteCommand,
-	NULL,
-	NULL,
-	EocHelper_ProcessNotifyLib,
-	NULL,
-	NULL,
-	sizeof(Consts) / sizeof(Consts[0]),
-	Consts,
-	NULL
-};
-PLIB_INFO WINAPI GetNewInf()
-{
-	return (&LibInfo);
-};
-#endif
+	HWND TempWnd;
+	HWND StatusWnd = 0;
+	HWND TabWnd = 0;
+	if (!g_EhWnd)
+	{
+		return;
+	}
+	//易语言的状态夹可以固定的和脱离的
+	do //先查找固定的状态夹
+	{
+		TempWnd = FindWindowEx(g_EhWnd, TempWnd, "AfxControlBar42s", 0); //窗口标题是“状态夹”，但有英文版
+		if (TempWnd == 0) //状态夹的子窗口不存在说明状态夹窗口分离了，易语言会创建一个顶级窗口，然后把子窗口分离过去
+		{
+			//先查找所有顶级窗口
+			do
+			{
+				TempWnd = FindWindowEx(0, TempWnd, "Afx:400000:8:10003:0:0", 0); //窗口标题是“状态夹”，如果隐藏则是NULL
+				if (TempWnd == 0)
+				{
+					return; //没有找到
+				}
+				if (GetParent(TempWnd) == g_EhWnd) //父窗口必须是易语言的IDE窗口
+				{
+					StatusWnd = GetDlgItem(TempWnd, 59423);
+					if (StatusWnd)
+					{
+						StatusWnd = GetDlgItem(StatusWnd, 130); //这就是要找的子窗口
+					}
+				}
+			} while (StatusWnd == 0);
+		}
+		else
+		{
+			StatusWnd = GetDlgItem(TempWnd, 130); //在状态夹里面只有一个子窗口
+		}
 
-BOOL g_EOCBuild = false;
+	} while (StatusWnd == 0); //如果这个子窗口不存在，这就继续循环到找到为止
+	TabWnd = GetDlgItem(GetDlgItem(StatusWnd, 0), 1000);
+	g_EOutputhWnd = GetDlgItem(TabWnd, 1011);
+}
+
+BOOL EOutput(LPCSTR txt)
+{
+	SendMessage(g_EOutputhWnd, EM_SETSEL, -2, -1);  //移动光标到末尾
+	return SendMessage(g_EOutputhWnd, EM_REPLACESEL, 0, (int)txt) != 0;
+}
+
+
 int WINAPI E_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	int ret = CallWindowProc(g_EWndProc, hwnd, uMsg, wParam, lParam);
@@ -279,3 +258,100 @@ BOOL WINAPI My_GetSaveFileNameA(LPOPENFILENAMEA Arg1)
 
 	return ret;
 }
+#endif
+
+//--------------------------------------------------------------------
+
+EXTERN_C INT WINAPI EocHelper_ProcessNotifyLib(INT nMsg, DWORD dwParam1, DWORD dwParam2)
+{
+#ifndef __E_STATIC_LIB
+	if (nMsg == NL_GET_CMD_FUNC_NAMES) // 返回所有命令实现函数的的函数名称数组(char*[]), 支持静态编译的动态库必须处理
+		return (INT)CommandNames;
+	else if (nMsg == NL_GET_NOTIFY_LIB_FUNC_NAME) // 返回处理系统通知的函数名称(PFN_NOTIFY_LIB函数名称), 支持静态编译的动态库必须处理
+		return (INT)"EocHelper_ProcessNotifyLib";
+	else if (nMsg == NL_GET_DEPENDENT_LIBS) return (INT)NULL;
+	// 返回静态库所依赖的其它静态库文件名列表(格式为\0分隔的文本,结尾两个\0), 支持静态编译的动态库必须处理
+	// kernel32.lib user32.lib gdi32.lib 等常用的系统库不需要放在此列表中
+	// 返回NULL或NR_ERR表示不指定依赖文件  
+	else if (nMsg == NL_SYS_NOTIFY_FUNCTION)
+	{
+		if (g_fnNotifySys) 
+			return NR_OK; //防止重复调用
+		int nRet = ProcessNotifyLib(nMsg, dwParam1, dwParam2); //先让它获取g_fnNotifySys
+
+		g_EhWnd = (HWND)NotifySys(NES_GET_MAIN_HWND, NULL, NULL);
+		g_ver = NotifySys(NAS_GET_VER, NULL, NULL);
+		NotifySys(NAS_GET_PATH, 1, (int)& g_EPath);
+		GetEOutputWnd();
+		Hook_GetSaveFileNameA = (PFN_GetSaveFileNameA)IATHook(GetModuleHandle(NULL), "comdlg32.dll", "GetSaveFileNameA", (PROC)My_GetSaveFileNameA);
+
+		g_EWndProc = (WNDPROC)SetWindowLong(g_EhWnd, GWL_WNDPROC, (LONG)&E_WndProc);
+		EOutput("\r\n★★ EOC插件开启 ★★\r\n");
+
+		return nRet;
+	}
+	else if (nMsg == NL_UNLOAD_FROM_IDE)
+	{
+		SetWindowLong(g_EhWnd, GWL_WNDPROC, (int)g_EWndProc);
+		IATHook(GetModuleHandle(NULL), "comdlg32.dll", "GetSaveFileNameA", (PROC)Hook_GetSaveFileNameA);
+		EOutput("\r\n☆☆ EOC插件关闭 ☆☆\r\n");
+		return NR_DELAY_FREE;
+	}
+
+#endif
+	return ProcessNotifyLib(nMsg, dwParam1, dwParam2);
+};
+
+
+#ifndef __E_STATIC_LIB
+static LIB_INFO LibInfo =
+{
+	/* { 库格式号, GUID串号, 主版本号, 次版本号, 构建版本号, 系统主版本号, 系统次版本号, 核心库主版本号, 核心库次版本号,
+	支持库名, 支持库语言, 支持库描述, 支持库状态,
+	作者姓名, 邮政编码, 通信地址, 电话号码, 传真号码, 电子邮箱, 主页地址, 其它信息,
+	类型数量, 类型指针, 类别数量, 命令类别, 命令总数, 命令指针, 命令入口,
+	附加功能, 功能描述, 消息指针, 超级模板, 模板描述,
+	常量数量, 常量指针, 外部文件} */
+	LIB_FORMAT_VER,
+	_T(LIB_GUID_STR),
+	LIB_MajorVersion,
+	LIB_MinorVersion,
+	LIB_BuildNumber,
+	LIB_SysMajorVer,
+	LIB_SysMinorVer,
+	LIB_KrnlLibMajorVer,
+	LIB_KrnlLibMinorVer,
+	_T(LIB_NAME_STR),
+	__GBK_LANG_VER,
+	_WT(LIB_DESCRIPTION_STR),
+	_LIB_OS(__OS_WIN),
+	_WT(LIB_Author),
+	_WT(LIB_ZipCode),
+	_WT(LIB_Address),
+	_WT(LIB_Phone),
+	_WT(LIB_Fax),
+	_WT(LIB_Email),
+	_WT(LIB_HomePage),
+	_WT(LIB_Other),
+	sizeof(s_DataType) / sizeof(s_DataType[0]),
+	s_DataType,
+	LIB_TYPE_COUNT,
+	_WT(LIB_TYPE_STR),
+	sizeof(Commands) / sizeof(Commands[0]),
+	Commands,
+	ExecuteCommand,
+	NULL,
+	NULL,
+	EocHelper_ProcessNotifyLib,
+	NULL,
+	NULL,
+	sizeof(Consts) / sizeof(Consts[0]),
+	Consts,
+	NULL
+};
+PLIB_INFO WINAPI GetNewInf()
+{
+	return (&LibInfo);
+};
+
+#endif
