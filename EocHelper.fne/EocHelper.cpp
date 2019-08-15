@@ -148,7 +148,7 @@ static CMD_INFO Commands[] =
 #ifndef __E_STATIC_LIB
 void GetEOutputWnd()
 {
-	HWND TempWnd;
+	HWND TempWnd = 0;
 	HWND StatusWnd = 0;
 	HWND TabWnd = 0;
 	if (!g_EhWnd)
@@ -275,8 +275,10 @@ EXTERN_C INT WINAPI EocHelper_ProcessNotifyLib(INT nMsg, DWORD dwParam1, DWORD d
 	// 返回NULL或NR_ERR表示不指定依赖文件  
 	else if (nMsg == NL_SYS_NOTIFY_FUNCTION)
 	{
-		if (g_fnNotifySys) 
+		if (g_fnNotifySys)
+		{
 			return NR_OK; //防止重复调用
+		}
 		int nRet = ProcessNotifyLib(nMsg, dwParam1, dwParam2); //先让它获取g_fnNotifySys
 
 		g_EhWnd = (HWND)NotifySys(NES_GET_MAIN_HWND, NULL, NULL);
@@ -287,7 +289,7 @@ EXTERN_C INT WINAPI EocHelper_ProcessNotifyLib(INT nMsg, DWORD dwParam1, DWORD d
 
 		g_EWndProc = (WNDPROC)SetWindowLong(g_EhWnd, GWL_WNDPROC, (LONG)&E_WndProc);
 		EOutput("\r\n★★ EOC插件开启 ★★\r\n");
-
+		
 		return nRet;
 	}
 	else if (nMsg == NL_UNLOAD_FROM_IDE)
