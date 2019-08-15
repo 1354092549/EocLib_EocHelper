@@ -17,6 +17,3 @@
 #include "tchar.h"
 #include "wtypes.h"
 
-
-int WINAPI E_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam);
-BOOL WINAPI My_GetSaveFileNameA(LPOPENFILENAMEA Arg1);
