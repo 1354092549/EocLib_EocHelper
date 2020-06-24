@@ -3,11 +3,14 @@
 
 #include "stdafx.h"
 #include "EocHelper.h"
+#include "IATHook.h"
 #include "elib/lib2.h"
 #include "elib/lang.h"
 #include "elib/fnshare.h"
 #include "elib/fnshare.cpp"
 #include <stdlib.h>
+
+
 
 //------------------------库常量、命令、数据类型定义区-----------------------------
 
@@ -143,8 +146,124 @@ static CMD_INFO Commands[] =
 };
 #endif
 
+//--------------------------------------------------------------------
+#ifndef __E_STATIC_LIB
+void GetEOutputWnd()
+{
+	HWND TempWnd = 0;
+	HWND StatusWnd = 0;
+	HWND TabWnd = 0;
+	if (!g_EhWnd)
+	{
+		return;
+	}
+	//易语言的状态夹可以固定的和脱离的
+	do //先查找固定的状态夹
+	{
+		TempWnd = FindWindowEx(g_EhWnd, TempWnd, "AfxControlBar42s", 0); //窗口标题是“状态夹”，但有英文版
+		if (TempWnd == 0) //状态夹的子窗口不存在说明状态夹窗口分离了，易语言会创建一个顶级窗口，然后把子窗口分离过去
+		{
+			//先查找所有顶级窗口
+			do
+			{
+				TempWnd = FindWindowEx(0, TempWnd, "Afx:400000:8:10003:0:0", 0); //窗口标题是“状态夹”，如果隐藏则是NULL
+				if (TempWnd == 0)
+				{
+					return; //没有找到
+				}
+				if (GetParent(TempWnd) == g_EhWnd) //父窗口必须是易语言的IDE窗口
+				{
+					StatusWnd = GetDlgItem(TempWnd, 59423);
+					if (StatusWnd)
+					{
+						StatusWnd = GetDlgItem(StatusWnd, 130); //这就是要找的子窗口
+					}
+				}
+			} while (StatusWnd == 0);
+		}
+		else
+		{
+			StatusWnd = GetDlgItem(TempWnd, 130); //在状态夹里面只有一个子窗口
+		}
+
+	} while (StatusWnd == 0); //如果这个子窗口不存在，这就继续循环到找到为止
+	TabWnd = GetDlgItem(GetDlgItem(StatusWnd, 0), 1000);
+	g_EOutputhWnd = GetDlgItem(TabWnd, 1011);
+}
+
+BOOL EOutput(LPCSTR txt)
+{
+	SendMessage(g_EOutputhWnd, EM_SETSEL, -2, -1);  //移动光标到末尾
+	return SendMessage(g_EOutputhWnd, EM_REPLACESEL, 0, (int)txt) != 0;
+}
 
 
+int WINAPI E_WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+	int ret = CallWindowProc(g_EWndProc, hwnd, uMsg, wParam, lParam);
+	switch (uMsg)
+	{
+	case WM_INITMENUPOPUP:
+	{
+		HMENU hMenu = (HMENU)wParam;
+		int nCount = GetMenuItemCount(hMenu);
+		int uId, uState;
+		int i;
+
+		for (i = 0; nCount > i; i++)
+		{
+			uId = GetMenuItemID(hMenu, i);
+			if (uId == IDM_编译)
+			{
+				i++;
+				uId = GetMenuItemID(hMenu, i);
+				if (uId != IDM_EOCBuild)
+				{
+					InsertMenu(hMenu, i, MF_BYPOSITION, IDM_EOCBuild, "&EOC编译");
+				}
+				//跟随菜单状态
+				uState = GetMenuState(hMenu, IDM_编译, MF_BYCOMMAND);
+				EnableMenuItem(hMenu, IDM_EOCBuild, MF_BYCOMMAND | uState);
+				g_EOCBuild = false;
+				break;
+			}
+		}
+		break;
+	}
+	case WM_COMMAND:
+	{
+		int MenuID = wParam;
+		if (MenuID == IDM_EOCBuild)
+		{
+			g_EOCBuild = true;
+			SendMessage(hwnd, WM_COMMAND, IDM_编译为指定类型_Windows易语言模块, 0);
+			g_EOCBuild = false;
+
+			MessageBox(g_EhWnd, g_EOCBuildPath, "保存到", MB_OK);
+		}
+		break;
+	}
+	}
+	return ret;
+}
+
+
+BOOL WINAPI My_GetSaveFileNameA(LPOPENFILENAMEA Arg1)
+{
+	BOOL ret = Hook_GetSaveFileNameA(Arg1);
+
+	if (ret && g_EOCBuild)
+	{
+		if (Arg1->lpstrFile)
+		{
+			strcpy(g_EOCBuildPath, Arg1->lpstrFile);
+		}
+
+	}
+
+	return ret;
+}
+#endif
 
 //--------------------------------------------------------------------
 
@@ -159,6 +278,34 @@ EXTERN_C INT WINAPI EocHelper_ProcessNotifyLib(INT nMsg, DWORD dwParam1, DWORD d
 	// 返回静态库所依赖的其它静态库文件名列表(格式为\0分隔的文本,结尾两个\0), 支持静态编译的动态库必须处理
 	// kernel32.lib user32.lib gdi32.lib 等常用的系统库不需要放在此列表中
 	// 返回NULL或NR_ERR表示不指定依赖文件  
+	else if (nMsg == NL_SYS_NOTIFY_FUNCTION)
+	{
+		if (g_fnNotifySys)
+		{
+			return NR_OK; //防止重复调用
+		}
+		int nRet = ProcessNotifyLib(nMsg, dwParam1, dwParam2); //先让它获取g_fnNotifySys
+
+		g_EhWnd = (HWND)NotifySys(NES_GET_MAIN_HWND, NULL, NULL);
+		g_ver = NotifySys(NAS_GET_VER, NULL, NULL);
+		NotifySys(NAS_GET_PATH, 1, (int)& g_EPath);
+		GetEOutputWnd();
+		Hook_GetSaveFileNameA = (PFN_GetSaveFileNameA)IATHook(GetModuleHandle(NULL), "comdlg32.dll", "GetSaveFileNameA", (PROC)My_GetSaveFileNameA);
+
+		g_EWndProc = (WNDPROC)SetWindowLong(g_EhWnd, GWL_WNDPROC, (LONG)&E_WndProc);
+		EOutput("\r\n★★ EOC插件开启 ★★\r\n");
+		
+		return nRet;
+	}
+	else if (nMsg == NL_UNLOAD_FROM_IDE)
+	{
+		SetWindowLong(g_EhWnd, GWL_WNDPROC, (int)g_EWndProc);
+		IATHook(GetModuleHandle(NULL), "comdlg32.dll", "GetSaveFileNameA", (PROC)Hook_GetSaveFileNameA);
+		EOutput("\r\n☆☆ EOC插件关闭 ☆☆\r\n");
+
+		return NR_DELAY_FREE;
+	}
+
 #endif
 	return ProcessNotifyLib(nMsg, dwParam1, dwParam2);
 };
@@ -214,6 +361,5 @@ PLIB_INFO WINAPI GetNewInf()
 {
 	return (&LibInfo);
 };
+
 #endif
-
-
